@@ -13,53 +13,74 @@ import java.net.URL
 class HttpException(val code: Int) : Exception("Server returned HTTP $code")
 
 /**
- * Downloads the card list from the open Riftcodex API (no key needed) and caches the cleaned
- * list on disk so the app works offline afterwards. Card art itself is streamed from the
+ * Downloads the card list from RiftHunt (free, no key, kept current with new sets) and caches the
+ * cleaned list on disk so the app works offline afterwards. If RiftHunt is unreachable it falls
+ * back to the Riftcodex API, which can lag behind on new sets. Card art is streamed from the
  * image URLs and cached by Coil - nothing from the game is bundled in the app.
  */
 class CardRepository(private val dir: File) {
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-    private val cacheFile get() = File(dir, "cards_v1.json")
+    private val cacheFile get() = File(dir, "cards_v2.json")
+    private val legacyFile get() = File(dir, "cards_v1.json")
 
-    fun loadCache(): List<Card>? =
-        runCatching { json.decodeFromString<List<Card>>(cacheFile.readText()) }
-            .getOrNull()
-            ?.takeIf { it.isNotEmpty() }
+    /** True when the last download had to use the (possibly outdated) fallback source. */
+    var usedFallback = false
+        private set
+
+    private fun read(f: File): List<Card>? =
+        runCatching { json.decodeFromString<List<Card>>(f.readText()) }.getOrNull()?.takeIf { it.isNotEmpty() }
+
+    fun loadCache(): List<Card>? = read(cacheFile)
+
+    /** Cards from the old Riftcodex-only version of the app, used once to carry progress over. */
+    fun loadLegacy(): List<Card>? = read(legacyFile)
 
     suspend fun download(onProgress: (page: Int, pages: Int) -> Unit): List<Card> =
         withContext(Dispatchers.IO) {
-            var size = 100
-            var page = 1
-            var pages = 1
-            val all = ArrayList<ApiCard>()
-            while (page <= pages) {
-                val body = try {
-                    fetch(page, size)
-                } catch (e: HttpException) {
-                    // Some servers cap page size - retry the first page smaller.
-                    if (page == 1 && size > 50 && e.code in 400..499) {
-                        size = 50
-                        continue
-                    } else throw e
-                }
-                val parsed = json.decodeFromString<ApiPage>(body)
-                all += parsed.items
-                pages = parsed.pages.coerceAtLeast(1)
-                onProgress(page, pages)
-                if (parsed.items.isEmpty()) break
-                page++
+            usedFallback = false
+            val raw = try {
+                onProgress(0, 1)
+                RiftHunt.parse(get(RiftHunt.BULK_URL), json).also { check(it.isNotEmpty()) { "RiftHunt returned no cards" } }
+            } catch (e: Exception) {
+                usedFallback = true
+                downloadRiftcodex(onProgress)
             }
-            val cards = CardCleaner.clean(all.mapNotNull { it.toCard() })
+            val cards = CardCleaner.clean(raw)
             if (cards.isEmpty()) error("The card API returned no cards")
             runCatching { cacheFile.writeText(json.encodeToString(cards)) }
             cards
         }
 
-    private fun fetch(page: Int, size: Int): String {
-        val conn = URL("https://api.riftcodex.com/cards?page=$page&size=$size").openConnection() as HttpURLConnection
+    private fun downloadRiftcodex(onProgress: (page: Int, pages: Int) -> Unit): List<Card> {
+        var size = 100
+        var page = 1
+        var pages = 1
+        val all = ArrayList<ApiCard>()
+        while (page <= pages) {
+            val body = try {
+                get("https://api.riftcodex.com/cards?page=$page&size=$size")
+            } catch (e: HttpException) {
+                // Some servers cap page size - retry the first page smaller.
+                if (page == 1 && size > 50 && e.code in 400..499) {
+                    size = 50
+                    continue
+                } else throw e
+            }
+            val parsed = json.decodeFromString<ApiPage>(body)
+            all += parsed.items
+            pages = parsed.pages.coerceAtLeast(1)
+            onProgress(page, pages)
+            if (parsed.items.isEmpty()) break
+            page++
+        }
+        return all.mapNotNull { it.toCard() }
+    }
+
+    private fun get(url: String): String {
+        val conn = URL(url).openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = 15_000
-            conn.readTimeout = 30_000
+            conn.readTimeout = 60_000
             conn.setRequestProperty("Accept", "application/json")
             conn.setRequestProperty("User-Agent", "RiftRecall/1.0 (personal study app)")
             val code = conn.responseCode

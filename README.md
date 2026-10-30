@@ -5,7 +5,7 @@ An Android app (Kotlin + Jetpack Compose) for memorising Riftbound cards. It sho
 ## Build and run
 
 1. Install Android Studio (Ladybug or newer) and open this folder. It will create the Gradle wrapper and download the Android SDK pieces it needs.
-2. Run on a device or emulator (Android 8.0 / API 26 or newer). Needs internet on first launch to download the card list (about 800 cards via the open Riftcodex API, then cached for offline use). Art is streamed and cached by the image loader.
+2. Run on a device or emulator (Android 8.0 / API 26 or newer). Needs internet on first launch to download the card list (one ~1 MB download from RiftHunt, then cached for offline use). Art is streamed and cached by the image loader.
 3. **Open Settings > Art crop on first run** and drag the sliders until the name, cost and rules text sit outside the gold outline. The default crop is an estimate.
 
 Unit tests for the learning logic: `./gradlew :app:testDebugUnitTest`.
@@ -24,4 +24,4 @@ Unit tests for the learning logic: `./gradlew :app:testDebugUnitTest`.
 
 ## Data and credits
 
-Card data comes from the community Riftcodex API. Card art is loaded from the official image host at runtime and is not bundled in the app. This is an unofficial fan project, not affiliated with Riot Games.
+Card data comes from the free RiftHunt API (falling back to the community Riftcodex API). Card art is loaded from the official image host at runtime and is not bundled in the app. This is an unofficial fan project, not affiliated with Riot Games.

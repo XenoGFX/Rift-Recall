@@ -2,6 +2,9 @@ package com.riftrecall.app.logic
 
 import com.riftrecall.app.data.Card
 import com.riftrecall.app.data.Entry
+import com.riftrecall.app.data.ProgressMigration
+import com.riftrecall.app.data.RiftHunt
+import com.riftrecall.app.data.stableId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -112,5 +115,31 @@ class LogicTest {
         val (done, commits) = Engine.advance(s)
         assertEquals(listOf(Outcome.CORRECT), commits.map { it.outcome })
         assertEquals(Phase.DONE, done.phase)
+    }
+
+    @Test fun parsesRiftHuntBulkWithEitherWrapper() {
+        val one = """{"id":"u1","oracle_name":"Trove Golem","name":"Trove Golem","type":"Unit","domains":["order"],
+            "energy":8,"power":2,"might":9,"rules_text":"When you play me, play four Gold gear tokens exhausted.",
+            "set":"sfd","set_name":"Spiritforged","collector_number":"174","rarity":"rare","variant":null,
+            "images":{"small":"https://x/s.webp","normal":"https://x/n.webp","large":"https://x/l.webp"}}"""
+        val fromArray = RiftHunt.parse("[$one]")
+        val fromWrapper = RiftHunt.parse("""{"data":[$one]}""")
+        assertEquals(1, fromArray.size)
+        assertEquals(fromArray, fromWrapper)
+        val c = fromArray[0]
+        assertEquals("SFD-174", c.id)
+        assertEquals(listOf("Order"), c.domains)
+        assertEquals(8, c.energy)
+        assertEquals("https://x/n.webp", c.imageUrl)
+        assertFalse(c.special)
+    }
+
+    @Test fun progressCarriesOverToNewIds() {
+        val old = card(id = "mongo123").copy(setId = "SFD", number = 174)
+        val new = card(id = "SFD-174").copy(setId = "SFD", number = 174)
+        val progress = mapOf("mongo123|NAME" to Entry(box = 3, seen = 4))
+        val out = ProgressMigration.remap(progress, listOf(old), listOf(new))
+        assertEquals(3, out["SFD-174|NAME"]?.box)
+        assertEquals("OGN-9", stableId("ogn", "009"))
     }
 }

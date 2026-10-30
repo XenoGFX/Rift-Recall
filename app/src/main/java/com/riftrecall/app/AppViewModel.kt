@@ -7,6 +7,7 @@ import com.riftrecall.app.data.Card
 import com.riftrecall.app.data.CardRepository
 import com.riftrecall.app.data.Entry
 import com.riftrecall.app.data.Pool
+import com.riftrecall.app.data.ProgressMigration
 import com.riftrecall.app.data.ProgressStore
 import com.riftrecall.app.data.Settings
 import com.riftrecall.app.data.SettingsStore
@@ -68,10 +69,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _cards.value = CardsState.Loading("Downloading card data...")
             try {
+                val legacy = withContext(Dispatchers.IO) { repo.loadLegacy() }
                 val list = repo.download { page, pages ->
                     _cards.value = CardsState.Loading("Downloading card data... $page / $pages")
                 }
+                if (legacy != null) {
+                    // Card ids changed with the new data source: carry study progress over.
+                    _progress.value = ProgressMigration.remap(_progress.value, legacy, list)
+                    flush()
+                }
                 _cards.value = CardsState.Ready(list)
+                if (repo.usedFallback) {
+                    _message.value = "RiftHunt was unreachable, so the older Riftcodex data was used. It may be missing new sets."
+                }
             } catch (e: Exception) {
                 val cached = withContext(Dispatchers.IO) { repo.loadCache() }
                 if (cached != null) {

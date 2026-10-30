@@ -350,7 +350,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 OutlinedButton(onClick = { confirmReset = true }) { Text("Reset progress") }
             }
             Text(
-                "Card data from the community Riftcodex API; art is streamed from the official card image host and " +
+                "Card data from the RiftHunt API (fallback: Riftcodex); art is streamed from the image host and " +
                     "cached on your device. Rift Recall is an unofficial fan project, not affiliated with Riot Games.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
