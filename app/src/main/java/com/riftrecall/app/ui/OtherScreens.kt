@@ -344,13 +344,20 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
 
             Text("Data", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+            val info by vm.dataInfo.collectAsState()
             Text("${all.size} cards stored on this device.")
+            Text(
+                "Sets loaded: " + all.map { it.setId }.filter { it.isNotBlank() }.distinct().sorted().joinToString(", ").ifEmpty { "none" },
+            )
+            if (info.isNotBlank()) {
+                Text("Source: $info", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { vm.refresh(); onBack() }) { Text("Re-download cards") }
                 OutlinedButton(onClick = { confirmReset = true }) { Text("Reset progress") }
             }
             Text(
-                "Card data from the community Riftcodex API; art is streamed from the official card image host and " +
+                "Card data from the RiftHunt API (fallback: Riftcodex); art is streamed from the image host and " +
                     "cached on your device. Rift Recall is an unofficial fan project, not affiliated with Riot Games.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

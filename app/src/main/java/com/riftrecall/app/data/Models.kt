@@ -120,7 +120,7 @@ fun ApiCard.toCard(): Card? {
     if (name.isBlank() || image.isNullOrBlank()) return null
     val rich = text?.rich?.takeIf { it.isNotBlank() }?.let(::htmlToText)
     return Card(
-        id = id.ifBlank { riftboundId },
+        id = riftboundId.lowercase().ifBlank { id },
         name = name.trim(),
         code = riftboundId,
         number = collectorNumber,

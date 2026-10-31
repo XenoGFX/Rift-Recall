@@ -7,6 +7,7 @@ import com.riftrecall.app.data.Card
 import com.riftrecall.app.data.CardRepository
 import com.riftrecall.app.data.Entry
 import com.riftrecall.app.data.Pool
+import com.riftrecall.app.data.ProgressMigration
 import com.riftrecall.app.data.ProgressStore
 import com.riftrecall.app.data.Settings
 import com.riftrecall.app.data.SettingsStore
@@ -49,6 +50,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _session = MutableStateFlow<SessionState?>(null)
     val session: StateFlow<SessionState?> = _session.asStateFlow()
 
+    private val _dataInfo = MutableStateFlow("")
+    val dataInfo: StateFlow<String> = _dataInfo.asStateFlow()
+
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
@@ -58,7 +62,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _progress.value = withContext(Dispatchers.IO) { store.load() }
             val cached = withContext(Dispatchers.IO) { repo.loadCache() }
-            if (cached != null) _cards.value = CardsState.Ready(cached) else refresh()
+            _dataInfo.value = withContext(Dispatchers.IO) { repo.loadSourceInfo() }
+            if (cached != null) {
+                _cards.value = CardsState.Ready(cached)
+                // Stored data came from the outdated fallback: try the main source again.
+                if (repo.lastUsedFallback()) refresh()
+            } else refresh()
         }
     }
 
@@ -68,10 +77,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _cards.value = CardsState.Loading("Downloading card data...")
             try {
+                val legacy = withContext(Dispatchers.IO) { repo.loadLegacy() }
                 val list = repo.download { page, pages ->
                     _cards.value = CardsState.Loading("Downloading card data... $page / $pages")
                 }
+                if (legacy != null) {
+                    // Card ids changed with the new data source: carry study progress over.
+                    _progress.value = ProgressMigration.remap(_progress.value, legacy, list)
+                    flush()
+                }
                 _cards.value = CardsState.Ready(list)
+                _dataInfo.value = withContext(Dispatchers.IO) { repo.loadSourceInfo() }
+                if (repo.usedFallback) {
+                    _message.value = "RiftHunt failed, so older Riftcodex data was used (it may lack new sets). Details are in Settings."
+                }
             } catch (e: Exception) {
                 val cached = withContext(Dispatchers.IO) { repo.loadCache() }
                 if (cached != null) {

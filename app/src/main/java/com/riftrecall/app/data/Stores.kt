@@ -85,5 +85,27 @@ object Pool {
 
     /** The cards the user has chosen to study (set filter + runes/tokens switch). */
     fun filter(all: List<Card>, s: Settings): List<Card> =
-        all.filter { (s.sets.isEmpty() || it.setId in s.sets) && (s.includeExtras || !isExtra(it)) }
+        dedupeReprints(all.filter { (s.sets.isEmpty() || it.setId in s.sets) && (s.includeExtras || !isExtra(it)) })
+
+    private val MAIN_SETS = listOf("OGN", "OGS", "SFD", "UNL", "VEN", "RAD")
+    private val PROMO_SETS = setOf("OPP", "PR", "JDG", "RWB", "SGN")
+
+    /** Release order: known main sets first, then newer unknown sets, then promo sets. */
+    private fun setRank(id: String): Int = when {
+        id in MAIN_SETS -> MAIN_SETS.indexOf(id)
+        id in PROMO_SETS -> 90
+        else -> 50
+    }
+
+    /** The same card printed in several of the chosen sets is quizzed once, as its earliest main-set printing. */
+    fun dedupeReprints(cards: List<Card>): List<Card> {
+        val best = HashMap<String, Card>()
+        for (c in cards) {
+            val key = com.riftrecall.app.logic.Matching.normalize(c.name) + "|" + c.type
+            val cur = best[key]
+            if (cur == null || setRank(c.setId) < setRank(cur.setId)) best[key] = c
+        }
+        val keep = best.values.mapTo(HashSet()) { it.id }
+        return cards.filter { it.id in keep }
+    }
 }
